@@ -3,9 +3,22 @@
 
 import click
 from jira import JIRA
-from jinja2 import Environment, FileSystemLoader, Template
+from jinja2 import Environment, FileSystemLoader, PackageLoader
 
-from templates import EMAIL_TEMPLATE
+import time
+#from templates import EMAIL_TEMPLATE, CHANGELOG_TEMPLATE
+
+
+ISSUE_TYPE_MAPPING = {
+    'features': ['task', 'aufgabe', 'story'],
+    'bugs': ['bug']
+}
+
+# Jinja2 templates
+#env = Environment(loader=FileSystemLoader('./jirainfo/templates'),
+env = Environment(loader=PackageLoader('jirainfo'),
+                    trim_blocks=True,
+                    lstrip_blocks=True)
 
 
 class JiraHelper(object):
@@ -44,22 +57,23 @@ def readIssuesFromInput(input):
 
     return result
 
-def compileTemplate(issues, template):
-    if not template:
-        raise ValueError("a template must be given")
-
-    template = Template(template)
+def compileEmailTemplate(issues):
+    template = env.get_template('email.html')
     return template.render(issues=issues)
 
+def compileChangelogTemplate(features, bugs, others, meta):
+    template = env.get_template('changelog.md')
+    return template.render(features=features, bugs=bugs, others=others, meta=meta)
 
 @click.group()
-@click.option('--host', '-h', envvar="JIRAINFO_HOST", help="")
-@click.option('--user', '-u', envvar="JIRAINFO_USER", help="")
-@click.option('--password', '-p', envvar="JIRAINFO_PASS", help="")
+@click.option('--host', '-h', envvar="JIRAINFO_HOST", help="Jira server")
+@click.option('--user', '-u', envvar="JIRAINFO_USER", help="Username (if required)")
+@click.option('--password', '-p', envvar="JIRAINFO_PASS", help="Password (if required)")
 @click.pass_context
 def cli(ctx, host, user, password):
     """An application that reads information from Jira tickets"""
-    ctx.obj = JiraHelper(host, user, password)
+    if host:
+        ctx.obj = JiraHelper(host, user, password)
 
 @cli.command('summary')
 @click.argument('input', type=click.File('rb'))
@@ -93,9 +107,44 @@ def emailreleaselog(ctx, input):
         link = jira.host + '/browse/' + issue.key
         data.append({'key': issue.key, 'link': link, 'summary': issue.fields.summary})
 
-    output = compileTemplate(data, EMAIL_TEMPLATE)
+    output = compileEmailTemplate(data)
     click.echo(output)
 
+@cli.command()
+@click.argument('input', type=click.File('rb'))
+@click.option('--releasename', '-r', default='Release', help='Release name')
+@click.pass_context
+def changelog(ctx, input, releasename):
+    """
+    Generates a changelog for the given issues.
+    """
+    jira = ctx.obj
+
+    issueKeys = readIssuesFromInput(input)
+    issues = jira.getIssues(issueKeys)
+
+    sortedIssues = {}
+    sortedIssues['features'] = []
+    sortedIssues['bugs'] = []
+    sortedIssues['others'] = []
+
+    # Sort issues by type
+    for issue in issues:
+        issueType = str(issue.fields.issuetype).lower()
+        if issueType in ISSUE_TYPE_MAPPING['features']:
+            sortedIssues['features'].append(issue)
+        elif issueType in ISSUE_TYPE_MAPPING['bugs']:
+            sortedIssues['bugs'].append(issue)
+        else:
+            sortedIssues['others'].append(issue)
+
+    meta = {
+            'jira': jira.host,
+            'date': time.strftime('%d-%m-%Y', time.gmtime()),
+            'releasename': releasename
+        }
+    output = compileChangelogTemplate(sortedIssues['features'], sortedIssues['bugs'], sortedIssues['others'], meta)
+    click.echo(output)
 
 if __name__ == '__main__':
     cli()

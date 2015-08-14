@@ -12,10 +12,8 @@ help:
 production: clean release
 
 env:
-	sudo easy_install pip && \
-	pip install virtualenv && \
 	virtualenv env && \
-	. env/bin/activate && \
+	source env/bin/activate && \
 	make deps
 
 deps:

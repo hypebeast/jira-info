@@ -13,7 +13,7 @@ README = open('README.md').read()
 LICENSE = open("LICENSE").read()
 
 setup(
-    name='jira-info',
+    name='jirainfo',
     version='0.0.1',
     long_description=(README),
     author='Sebastian Ruml',
