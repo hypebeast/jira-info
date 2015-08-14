@@ -3,10 +3,9 @@
 
 import click
 from jira import JIRA
-from jinja2 import Environment, FileSystemLoader, PackageLoader
+from jinja2 import Environment, PackageLoader
 
 import time
-#from templates import EMAIL_TEMPLATE, CHANGELOG_TEMPLATE
 
 
 ISSUE_TYPE_MAPPING = {
@@ -15,7 +14,6 @@ ISSUE_TYPE_MAPPING = {
 }
 
 # Jinja2 templates
-#env = Environment(loader=FileSystemLoader('./jirainfo/templates'),
 env = Environment(loader=PackageLoader('jirainfo'),
                     trim_blocks=True,
                     lstrip_blocks=True)
