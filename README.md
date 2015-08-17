@@ -4,7 +4,7 @@ jira-info
 
 ## Overview
 
-`jira-info` is an application that helps you to create changelogs from Jira.
+`jira-info` is an application that helps you to create changelogs from Jira issues and to get some information for Jira issues.
 
 ## Features
 

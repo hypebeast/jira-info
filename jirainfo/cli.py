@@ -4,6 +4,7 @@
 import click
 from jira import JIRA
 from jinja2 import Environment, PackageLoader
+from prettytable import PrettyTable
 
 import time
 
@@ -69,7 +70,11 @@ def compileChangelogTemplate(features, bugs, others, meta):
 @click.option('--password', '-p', envvar="JIRAINFO_PASS", help="Password (if required)")
 @click.pass_context
 def cli(ctx, host, user, password):
-    """An application that reads information from Jira tickets"""
+    """
+    jira-info is an application that helps you to create
+    changelogs from Jira issues and to get some information
+    for Jira issues.
+    """
     if host:
         ctx.obj = JiraHelper(host, user, password)
 
@@ -85,10 +90,18 @@ def summary(ctx, input):
     jira = ctx.obj
     results = []
     for ticket in tickets:
-        results.append({'title': ticket, 'summary': jira.getSummary(ticket)})
+        results.append([ticket, jira.getSummary(ticket), jira.host + '/browse/' + ticket])
 
+    x = PrettyTable(["Issue", "Summary", "Link"])
+    x.align["Issue"] = "l"
+    x.align["Summary"] = "l"
+    x.align["Link"] = "l"
+
+    rows = []
     for line in results:
-        click.echo('%s\t%s' % (line['title'], line['summary']))
+        x.add_row(line)
+
+    click.echo(x)
 
 @cli.command()
 @click.argument('input', type=click.File('rb'))
