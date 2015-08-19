@@ -26,6 +26,7 @@ setup(
         'jira',
         # Colorama is only required for Windows.
         'colorama',
+        'prettytable'
     ],
     license=(LICENSE),
     packages=['jirainfo'],
