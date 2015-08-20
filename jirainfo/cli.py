@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import sys
 import click
-from jira import JIRA
-from jinja2 import Environment, PackageLoader
+from jira import JIRAError
 from prettytable import PrettyTable
+from jirainfo import helpers
+from jirainfo.jirahelper import JiraHelper
 
 import time
 
@@ -14,83 +16,53 @@ ISSUE_TYPE_MAPPING = {
     'bugs': ['bug']
 }
 
-# Jinja2 templates
-env = Environment(loader=PackageLoader('jirainfo'),
-                    trim_blocks=True,
-                    lstrip_blocks=True)
-
-
-class JiraHelper(object):
-    def __init__(self, host, user="", password=""):
-        self.host = host
-        self.user = user
-        self.password = password
-
-        if user != "" and password != "":
-            self.jira = JIRA(host, basic_auth=(user, password))
-        else:
-            self.jira = JIRA(host)
-
-    def getSummary(self, issue):
-        """
-        Gets the summary for the given ticket.
-        """
-        issueData = self.jira.issue(issue)
-        return issueData.fields.summary
-
-    def getIssues(self, issues):
-        """
-        Gets the issues from Jira with the given issue numbers.
-        """
-        result = []
-        for issue in issues:
-            result.append(self.jira.issue(issue))
-
-        return result
-
-
-def readIssuesFromInput(input):
-    result = []
-    for line in input:
-        result.append(line.strip(' ').rstrip('\n'))
-
-    return result
-
-def compileEmailTemplate(issues):
-    template = env.get_template('email.html')
-    return template.render(issues=issues)
-
-def compileChangelogTemplate(features, bugs, others, meta):
-    template = env.get_template('changelog.md')
-    return template.render(features=features, bugs=bugs, others=others, meta=meta)
 
 @click.group()
-@click.option('--host', '-h', envvar="JIRAINFO_HOST", help="Jira server")
-@click.option('--user', '-u', envvar="JIRAINFO_USER", help="Username (if required)")
-@click.option('--password', '-p', envvar="JIRAINFO_PASS", help="Password (if required)")
+@click.option('--host', '-h', envvar="JIRAINFO_HOST", help="Jira host. Env var: JIRAINFO_HOST.")
+@click.option('--user', '-u', envvar="JIRAINFO_USER", help="Jira username (optional). Env var: JIRAINFO_USER.")
+@click.option('--password', '-p', envvar="JIRAINFO_PASS", help="Jira password (optional). Env var: JIRAINFO_PASS.")
+@click.version_option()
 @click.pass_context
 def cli(ctx, host, user, password):
     """
-    jira-info is an application that helps you to create
-    changelogs from Jira issues and to get some information
-    for Jira issues.
+    jira-info is an application that helps you to create changelogs from Jira issues or to get some additional information for the given issues.
+
+    The issue key are read from stdin and spereated by a line break.
+
+    Note:
+
+    Make sure that a Jira host is specified. Either via the --host option or via the JIRAINFO_HOST environment variable.
+
+    You can also pass the user and password option via environment variables (JIRAINFO_USER, JIRAINFO_PASS).
+
+    Example:
+
+    # This example prints the summary information for the given issues.
+
+    echo 'PROJECT-1234\n,PROJECT-2234\n,PROJECT-3234' > issues.txt
+
+    cat issues.txt | jira-info --host 'http://jira.atlassian.com' --user 'user' -password 'password' summary -
     """
-    if host:
-        ctx.obj = JiraHelper(host, user, password)
+    ctx.obj = {}
+    ctx.obj['host'] = host
+    ctx.obj['user'] = user
+    ctx.obj['password'] = password
 
 @cli.command('summary')
 @click.argument('input', type=click.File('rb'))
 @click.pass_context
 def summary(ctx, input):
     """Prints the summary for each ticket"""
+    helpers.exitIfNoHost(ctx)
+    jira = JiraHelper(ctx.obj['host'], ctx.obj['user'], ctx.obj['password'])
+
     tickets = []
     for line in input:
         tickets.append(line.strip(' ').rstrip('\n'))
 
-    jira = ctx.obj
     results = []
     for ticket in tickets:
-        results.append([ticket, jira.getSummary(ticket), jira.host + '/browse/' + ticket])
+        results.append([ticket, helpers.getSummaryOrExit(jira, ticket), jira.host + '/browse/' + ticket])
 
     x = PrettyTable(["Issue", "Summary", "Link"])
     x.align["Issue"] = "l"
@@ -108,31 +80,33 @@ def summary(ctx, input):
 @click.pass_context
 def emailreleaselog(ctx, input):
     """Generates a changelog for the release email."""
-    jira = ctx.obj
+    helpers.exitIfNoHost(ctx)
+    jira = JiraHelper(ctx.obj['host'], ctx.obj['user'], ctx.obj['password'])
 
-    issueNumbers = readIssuesFromInput(input)
-    issues = jira.getIssues(issueNumbers)
+    issueNumbers = helpers.readIssuesFromInput(input)
+    issues = helpers.getIssuesOrExit(jira, issueNumbers)
 
     data = []
     for issue in issues:
         link = jira.host + '/browse/' + issue.key
         data.append({'key': issue.key, 'link': link, 'summary': issue.fields.summary})
 
-    output = compileEmailTemplate(data)
+    output = helpers.compileEmailTemplate(data)
     click.echo(output)
 
 @cli.command()
 @click.argument('input', type=click.File('rb'))
-@click.option('--releasename', '-r', default='Release', help='Release name')
+@click.option('--releasename', '-r', default='Release', help='The name of the release')
 @click.pass_context
 def changelog(ctx, input, releasename):
     """
     Generates a changelog for the given issues.
     """
-    jira = ctx.obj
+    helpers.exitIfNoHost(ctx)
+    jira = JiraHelper(ctx.obj['host'], ctx.obj['user'], ctx.obj['password'])
 
-    issueKeys = readIssuesFromInput(input)
-    issues = jira.getIssues(issueKeys)
+    issueKeys = helpers.readIssuesFromInput(input)
+    issues = helpers.getIssuesOrExit(jira, issueKeys)
 
     sortedIssues = {}
     sortedIssues['features'] = []
@@ -154,8 +128,9 @@ def changelog(ctx, input, releasename):
             'date': time.strftime('%d-%m-%Y', time.gmtime()),
             'releasename': releasename
         }
-    output = compileChangelogTemplate(sortedIssues['features'], sortedIssues['bugs'], sortedIssues['others'], meta)
+    output = helpers.compileChangelogTemplate(sortedIssues['features'], sortedIssues['bugs'], sortedIssues['others'], meta)
     click.echo(output)
 
 if __name__ == '__main__':
+    # cli({})
     cli()

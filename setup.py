@@ -14,7 +14,7 @@ LICENSE = open("LICENSE").read()
 
 setup(
     name='jirainfo',
-    version='0.0.1',
+    version='0.2.0',
     long_description=(README),
     author='Sebastian Ruml',
     author_email='sebastian@sebastianruml.name',
