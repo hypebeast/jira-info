@@ -11,10 +11,15 @@ if sys.argv[-1] == 'publish':
 
 README = open('README.md').read()
 LICENSE = open("LICENSE").read()
+VERSION = open("version").read().strip()
+
+print VERSION
+
+sys.exit()
 
 setup(
     name='jirainfo',
-    version='0.2.0',
+    version=(VERSION),
     long_description=(README),
     author='Sebastian Ruml',
     author_email='sebastian@sebastianruml.name',
